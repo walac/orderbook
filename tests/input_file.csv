@@ -1,0 +1,193 @@
+#Format new order:
+# N, user(int),symbol(string),price(int),qty(int),side(char B or S),userOrderId(int)
+#
+#Format cancel order:
+# C, user(int),userOrderId(int)
+#
+#Format flush order book:
+# F
+
+# Notes:
+# * Price is 0 for market order, <>0 for limit order
+# * TOB = Top Of Book, highest bid, lowest offer
+# * Between scenarios flush order books
+
+#name: scenario 1
+#descr:balanced book
+
+# build book, TOB = 10/11
+N, 1, IBM, 10, 100, B, 1
+N, 1, IBM, 12, 100, S, 2
+N, 2, IBM, 9, 100, B, 101
+N, 2, IBM, 11, 100, S, 102 
+
+# hit book on each side, generate reject
+N, 1, IBM, 11, 100, B, 3
+N, 2, IBM, 10, 100, S, 103
+
+# replenish book on each side, TOB = 10/11
+N, 1, IBM, 10, 100, B, 4
+N, 2, IBM, 11, 100, S, 104
+F
+
+#name: scenario 2
+#descr: shallow bid
+
+# build book, shallow bid, TOB = 10/11
+N, 1, AAPL, 10, 100, B, 1
+N, 1, AAPL, 12, 100, S, 2
+N, 2, AAPL, 11, 100, S, 102
+
+# hit bid, generate reject
+N, 2, AAPL, 10, 100, S, 103
+
+#  increase volume to Bid TOB 10, 200
+N, 1, AAPL, 10, 100, B, 3
+F
+
+#name: scenario 3
+#descr: shallow ask
+
+# build book, shallow ask, TOB = 10/11
+N, 1, VAL, 10, 100, B, 1
+N, 2, VAL, 9, 100, B, 101
+N, 2, VAL, 11, 100, S, 102
+
+# hit ask, generate reject
+N, 1, VAL, 11, 100, B, 2
+
+# increase volume to Ask TOB 10, 200
+N, 2, VAL, 11, 100, S, 103
+F
+
+#name: scenario 4
+#descr: balanced book, limit below best bid
+
+# build book, TOB = 10/11
+N, 1, IBM, 10, 100, B, 1
+N, 1, IBM, 12, 100, S, 2
+N, 2, IBM, 9, 100, B, 101
+N, 2, IBM, 11, 100, S, 102
+
+# limit below best bid, generate reject
+N, 2, IBM, 9, 100, S, 103
+F
+
+#name: scenario 5
+#descr: balanced book, limit above best ask
+
+# build book, TOB = 10/11
+N, 1, IBM, 10, 100, B, 1
+N, 1, IBM, 12, 100, S, 2
+N, 2, IBM, 9, 100, B, 101
+N, 2, IBM, 11, 100, S, 102
+
+# limit above best ask, generate reject
+N, 1, IBM, 12, 100, B, 103
+F
+
+
+#name: scenario 6
+#descr: tighten spread through new limit orders
+
+# build book, TOB = 10/11
+N, 1, IBM, 10, 100, B, 1
+N, 1, IBM, 16, 100, S, 2
+N, 2, IBM, 9, 100, B, 101
+N, 2, IBM, 15, 100, S, 102
+
+# new bid, ask TOB = 11/14
+N, 2, IBM, 11, 100, B, 103
+N, 1, IBM, 14, 100, S, 3
+F
+
+
+#name: scenario 7
+#descr: balanced book, limit sell partial
+
+# build book, TOB = 10/11
+N, 1, IBM, 10, 100, B, 1
+N, 1, IBM, 12, 100, S, 2
+N, 2, IBM, 9, 100, B, 101
+N, 2, IBM, 11, 100, S, 102
+
+# limit sell, generate reject
+N, 2, IBM, 10, 20, S, 103
+F
+
+#name: scenario 8
+#descr: balanced book, limit buy partial
+
+# build book, TOB = 10/11
+N, 1, IBM, 10, 100, B, 1
+N, 1, IBM, 12, 100, S, 2
+N, 2, IBM, 9, 100, B, 101
+N, 2, IBM, 11, 100, S, 102
+
+# limit buy, generate reject
+N, 1, IBM, 11, 20, B, 3
+F
+
+#name: scenario 9
+#descr: balanced book, cancel best bid and offer
+
+# build book, TOB = 10/11
+N, 1, IBM, 10, 100, B, 1
+N, 1, IBM, 12, 100, S, 2
+N, 2, IBM, 9, 100, B, 101
+N, 2, IBM, 11, 100, S, 102
+
+# cancel best bid and offer
+C, 1, 1
+C, 2, 102
+F
+
+#name: scenario 10
+#descr: balanced book, cancel behind best bid and offer
+
+# build book, TOB = 10/11
+N, 1, IBM, 10, 100, B, 1
+N, 1, IBM, 12, 100, S, 2
+N, 2, IBM, 9, 100, B, 101
+N, 2, IBM, 11, 100, S, 102
+
+# cancel orders, TOB = 10/11
+C, 1, 2
+C, 2, 101
+F
+
+#name: scenario 11
+#descr: balanced book, cancel all bids
+
+# build book, TOB = 10/11
+N, 1, IBM, 10, 100, B, 1
+N, 1, IBM, 12, 100, S, 2
+N, 2, IBM, 9, 100, B, 101
+N, 2, IBM, 11, 100, S, 102
+
+# cancel all bids, TOB = -/11
+C, 1, 1
+C, 2, 101
+F
+
+
+#name: scenario 12
+#descr: balanced book, TOB volume changes
+
+# build book, TOB = 10/11
+N, 1, IBM, 10, 100, B, 1
+N, 1, IBM, 12, 100, S, 2
+N, 2, IBM, 9, 100, B, 101
+N, 2, IBM, 11, 100, S, 102
+
+# increase and decrease the TOB volume
+N, 2, IBM, 11, 100, S, 103
+C, 2, 103
+
+# cancel all asks
+C, 2, 102
+C, 1, 2
+F
+
+
+

@@ -7,7 +7,9 @@ use std::fmt;
 /// Side of the order
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Side {
+    /// Buy
     Buy,
+    /// Sell
     Sell,
 }
 
@@ -55,10 +57,19 @@ impl fmt::Display for Side {
 /// Represent an order
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Order {
+    /// The user id
     pub user_id: usize,
+
+    /// The order id
     pub order_id: usize,
+
+    /// The order price
     pub price: usize,
+
+    /// The order quantity
     pub volume: usize,
+
+    /// The side of the order
     pub side: Side,
 }
 
@@ -75,7 +86,6 @@ impl Order {
     }
 
     fn prices_cmp(&self, other: &Self) -> Option<Ordering> {
-        // Assume the two orders have the same side
         if self.price != other.price {
             self.price.partial_cmp(&other.price)
         } else if self.volume != other.volume {
@@ -93,6 +103,8 @@ impl Order {
 }
 
 impl PartialOrd for Order {
+    // We compare to move Sell orders to the front of the and
+    // the Buy orders to the back.
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match self.side {
             Side::Buy => match other.side {
@@ -113,6 +125,7 @@ impl Ord for Order {
     }
 }
 
+/// The types of logs in the order book
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LogEntry {
     Acknowledge {
@@ -144,7 +157,11 @@ pub enum LogEntry {
 }
 
 struct OrderBookEntry {
+    /// This contains all orders. The head is the Sell
+    /// top of the book and the tail the Buy top of the book.
     pub orders: BTreeSet<Order>,
+
+    /// The logs for this order book
     pub log: Vec<LogEntry>,
 }
 
@@ -168,6 +185,8 @@ impl OrderBook {
     pub fn new() -> OrderBook {
         OrderBook {
             order_book: HashMap::new(),
+
+            // Index is used for fast order lookup at cancel operations
             index: HashMap::new(),
         }
     }
@@ -182,28 +201,24 @@ impl OrderBook {
             .entry(symbol.to_owned())
             .or_insert(OrderBookEntry::new());
 
-        match top {
-            Some(t) => match other_top {
-                Some(ot) => {
-                    // look at the other side of the book and check if it crossed
-                    let crossed = match t.side {
-                        Side::Sell => ot.price >= order.price,
-                        Side::Buy => order.price >= ot.price,
-                    };
+        // look at the other side of the book and check if it is crossed
+        if top.is_some() && other_top.is_some() {
+            let top = top.unwrap();
+            let other_top = other_top.unwrap();
 
-                    if crossed {
-                        order_book.log.push(LogEntry::Reject {
-                            user_id: order.user_id,
-                            order_id: order.order_id,
-                        });
+            let crossed = match top.side {
+                Side::Sell => other_top.price >= order.price,
+                Side::Buy => order.price >= other_top.price,
+            };
 
-                        return;
-                    }
-                }
-                None => (),
-            },
-            // We don't have any other on this side
-            None => (),
+            if crossed {
+                order_book.log.push(LogEntry::Reject {
+                    user_id: order.user_id,
+                    order_id: order.order_id,
+                });
+
+                return;
+            }
         }
 
         order_book.log.push(LogEntry::Acknowledge {
@@ -255,6 +270,8 @@ impl OrderBook {
                 match order {
                     None => None,
                     Some(o) => {
+                        // We have to sum the volumes of all orders on the top
+                        // with the same price belonging to the same user
                         let mut o = *o;
                         if o.side == side {
                             (o.volume, o.order_id) = match side {
@@ -277,6 +294,17 @@ impl OrderBook {
         }
     }
 
+    /// Get the logs for the order_book
+    pub fn get_logs(&self, symbol: &str) -> Option<&Vec<LogEntry>> {
+        match self.order_book.get(symbol) {
+            None => None,
+            Some(order_entry) => Some(&order_entry.log),
+        }
+    }
+
+    // Return the sum of the volumes for the first orders
+    // with the same user_id and price. We also return the
+    // minimum order id of the set
     fn total_volume<'a>(
         &self,
         it: impl Iterator<Item = &'a Order>,
@@ -294,13 +322,6 @@ impl OrderBook {
             });
 
         (total, min_order_id)
-    }
-
-    pub fn get_logs(&self, symbol: &str) -> Option<&Vec<LogEntry>> {
-        match self.order_book.get(symbol) {
-            None => None,
-            Some(order_entry) => Some(&order_entry.log),
-        }
     }
 
     fn log_top_of_book(&mut self, symbol: &str, old_top: Option<Order>, new_top: Option<Order>) {

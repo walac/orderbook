@@ -1,4 +1,5 @@
 #![feature(map_first_last)]
+#![feature(destructuring_assignment)]
 use std::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
@@ -74,11 +75,13 @@ impl Order {
     }
 
     fn prices_cmp(&self, other: &Self) -> Option<Ordering> {
+        // Assume the two orders have the same side
         if self.price != other.price {
             self.price.partial_cmp(&other.price)
+        } else if self.volume != other.volume {
+            self.volume.partial_cmp(&other.volume)
         } else {
-            // Assume the two orders have the same side
-            // Given they have the same price, we want to
+            // Given they have the same price and volume, we want to
             // move the order that came earlier to the top
             // of the book (assumes order_id in ascending order)
             match self.side {
@@ -184,8 +187,8 @@ impl OrderBook {
                 Some(ot) => {
                     // look at the other side of the book and check if it crossed
                     let crossed = match t.side {
-                        Side::Sell => ot.price >= t.price,
-                        Side::Buy => t.price >= ot.price,
+                        Side::Sell => ot.price >= order.price,
+                        Side::Buy => order.price >= ot.price,
                     };
 
                     if crossed {
@@ -193,30 +196,25 @@ impl OrderBook {
                             user_id: order.user_id,
                             order_id: order.order_id,
                         });
-                    } else {
-                        order_book.log.push(LogEntry::Acknowledge {
-                            user_id: order.user_id,
-                            order_id: order.order_id,
-                        });
 
-                        self.index
-                            .insert((order.user_id, order.order_id), (symbol.to_owned(), *order));
-                        order_book.orders.insert(*order);
+                        return;
                     }
                 }
-                None => {}
+                None => (),
             },
             // We don't have any other on this side
-            None => {
-                order_book.log.push(LogEntry::Acknowledge {
-                    user_id: order.user_id,
-                    order_id: order.order_id,
-                });
-                self.index
-                    .insert((order.user_id, order.order_id), (symbol.to_owned(), *order));
-                order_book.orders.insert(*order);
-            }
+            None => (),
         }
+
+        order_book.log.push(LogEntry::Acknowledge {
+            user_id: order.user_id,
+            order_id: order.order_id,
+        });
+
+        self.index
+            .insert((order.user_id, order.order_id), (symbol.to_owned(), *order));
+
+        order_book.orders.insert(*order);
 
         let new_top = self.top(order.side, symbol);
         self.log_top_of_book(symbol, top, new_top);
@@ -228,14 +226,17 @@ impl OrderBook {
             Some((symbol, order)) => {
                 let old_top = self.top(order.side, &symbol);
 
-                self.order_book
-                    .get_mut(&symbol)
-                    .unwrap()
-                    .orders
-                    .remove(&order);
+                let order_book = self.order_book.get_mut(&symbol).unwrap();
+                order_book.orders.remove(&order);
+
+                order_book
+                    .log
+                    .push(LogEntry::Acknowledge { user_id, order_id });
 
                 let new_top = self.top(order.side, &symbol);
-                self.log_top_of_book(&symbol, old_top, new_top);
+                if new_top.is_some() {
+                    self.log_top_of_book(&symbol, old_top, new_top);
+                }
             }
             None => (),
         }
@@ -254,8 +255,19 @@ impl OrderBook {
                 match order {
                     None => None,
                     Some(o) => {
+                        let mut o = *o;
                         if o.side == side {
-                            Some(*o)
+                            (o.volume, o.order_id) = match side {
+                                Side::Sell => {
+                                    self.total_volume(order_entry.orders.iter(), o.user_id, o.price)
+                                }
+                                Side::Buy => self.total_volume(
+                                    order_entry.orders.iter().rev(),
+                                    o.user_id,
+                                    o.price,
+                                ),
+                            };
+                            Some(o)
                         } else {
                             None
                         }
@@ -263,6 +275,25 @@ impl OrderBook {
                 }
             }
         }
+    }
+
+    fn total_volume<'a>(
+        &self,
+        it: impl Iterator<Item = &'a Order>,
+        user_id: usize,
+        price: usize,
+    ) -> (usize, usize) {
+        let mut min_order_id = usize::MAX;
+        let total = it
+            .take_while(|x| x.user_id == user_id && x.price == price)
+            .fold(0, |acc, x| {
+                if x.order_id < min_order_id {
+                    min_order_id = x.order_id
+                }
+                acc + x.volume
+            });
+
+        (total, min_order_id)
     }
 
     pub fn get_logs(&self, symbol: &str) -> Option<&Vec<LogEntry>> {

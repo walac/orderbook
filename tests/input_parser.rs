@@ -84,27 +84,34 @@ pub fn parse_file<P: AsRef<Path>>(path: P) -> io::Result<Vec<Scenario>> {
                         .collect::<Vec<_>>();
 
                     match op {
-                        'N' => scenario.orders.push(OrderType::New(
-                            fields[1].to_owned(),
-                            Order {
-                                user_id: parse_usize(fields[0])?,
-                                price: parse_usize(fields[2])?,
-                                volume: parse_usize(fields[3])?,
-                                side: Side::new(fields[4].chars().nth(0).ok_or(io::Error::new(
-                                    io::ErrorKind::InvalidInput,
-                                    "Can't index side",
-                                ))?)
-                                .ok_or(io::Error::new(
-                                    io::ErrorKind::InvalidInput,
-                                    "Invalid side",
-                                ))?,
-                                order_id: parse_usize(fields[5])?,
-                            },
-                        )),
-                        'C' => scenario.orders.push(OrderType::Cancel(
-                            parse_usize(fields[0])?,
-                            parse_usize(fields[1])?,
-                        )),
+                        'N' => {
+                            scenario.orders.push(OrderType::New(
+                                fields[1].to_owned(),
+                                Order {
+                                    user_id: parse_usize(fields[0])?,
+                                    price: parse_usize(fields[2])?,
+                                    volume: parse_usize(fields[3])?,
+                                    side: Side::new(fields[4].chars().nth(0).ok_or(
+                                        io::Error::new(
+                                            io::ErrorKind::InvalidInput,
+                                            "Can't index side",
+                                        ),
+                                    )?)
+                                    .ok_or(
+                                        io::Error::new(io::ErrorKind::InvalidInput, "Invalid side"),
+                                    )?,
+                                    order_id: parse_usize(fields[5])?,
+                                },
+                            ));
+                            State::Fields
+                        }
+                        'C' => {
+                            scenario.orders.push(OrderType::Cancel(
+                                parse_usize(fields[0])?,
+                                parse_usize(fields[1])?,
+                            ));
+                            State::Fields
+                        }
                         'F' => {
                             ret.push(scenario);
                             scenario = Scenario {
@@ -112,12 +119,14 @@ pub fn parse_file<P: AsRef<Path>>(path: P) -> io::Result<Vec<Scenario>> {
                                 description: "".to_owned(),
                                 orders: Vec::new(),
                             };
-                        }
-                        _ => (),
-                    }
-                }
 
-                State::Fields
+                            State::Name
+                        }
+                        _ => State::Fields,
+                    }
+                } else {
+                    State::Fields
+                }
             }
         }
     }

@@ -249,9 +249,7 @@ impl OrderBook {
                     .push(LogEntry::Acknowledge { user_id, order_id });
 
                 let new_top = self.top(order.side, &symbol);
-                if new_top.is_some() {
-                    self.log_top_of_book(&symbol, old_top, new_top);
-                }
+                self.log_top_of_book(&symbol, old_top, new_top);
             }
             None => (),
         }
@@ -325,12 +323,16 @@ impl OrderBook {
     }
 
     fn log_top_of_book(&mut self, symbol: &str, old_top: Option<Order>, new_top: Option<Order>) {
-        // if there is a new top of book, it must be the one we just inserted
-        if old_top.is_none() || old_top.unwrap() != new_top.unwrap() {
-            let order = new_top.unwrap();
+        let order_book = self.order_book.get_mut(symbol).unwrap();
 
-            // make the borrow checker happy
-            let order_book = self.order_book.get_mut(symbol).unwrap();
+        if new_top.is_none() {
+            order_book.log.push(LogEntry::TopOfBook {
+                side: None,
+                price: 0,
+                volume: 0,
+            });
+        } else if old_top.is_none() || old_top.unwrap() != new_top.unwrap() {
+            let order = new_top.unwrap();
 
             order_book.log.push(LogEntry::TopOfBook {
                 side: Some(order.side),
